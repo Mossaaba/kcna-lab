@@ -1,0 +1,12 @@
+apiVersion: v1
+kind: Pod
+metadata: 
+  name: hello-2
+  labels:
+    app: hello-2
+spec:
+  containers:
+  - name: hello-2
+    image: httpd:2.4
+    ports:
+    - containerPort: 80

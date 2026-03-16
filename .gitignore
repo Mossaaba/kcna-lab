@@ -1,0 +1,12 @@
+# Working files — never commit
+research.md
+plan.md
+
+# macOS
+.DS_Store
+
+# Editor
+.idea/
+.vscode/
+*.swp
+*.swo

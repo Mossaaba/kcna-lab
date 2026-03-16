@@ -1,0 +1,23 @@
+  # deployment-hello.yaml
+  apiVersion: apps/v1        # Deployments live in the apps group, not core (v1)                                              kind: Deployment
+  metadata:
+    name: hello
+  spec:
+    replicas: 2              # How many Pod copies to keep running — like ECS desired count
+    selector:
+      matchLabels:
+        app: hello           # How the Deployment finds its Pods — must match template labels below
+    template:                # Pod template — everything below here is the Pod spec
+      metadata:
+        labels:
+          app: hello         # Must match selector.matchLabels above — this is how they're linked
+      spec:
+        containers:
+          - name: hello                                                                                                                 image: nginx:1.28.2
+            ports:
+              - containerPort: 80
+
+  Apply it:
+  kubectl apply -f deployment-hello.yaml
+  kubectl get pods           # you should see 2 hello pods now
+  kubectl get deployments
