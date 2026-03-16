@@ -212,6 +212,49 @@ kubectl describe configmap <name>
 
 ---
 
+## Ingress Controller (nginx-ingress)
+
+Routes external traffic into the cluster by hostname/path rules. AWS equivalent: ALB with listener rules.
+
+Two layers:
+- **Ingress resource** — your routing rules (what you write, `kind: Ingress`)
+- **Ingress Controller** — the thing that reads those rules and programs nginx (runs as a Deployment in `ingress-nginx` namespace)
+
+### Admission webhooks (the Completed pods)
+
+When you install ingress-nginx you'll see two one-shot pods:
+
+| Pod | What it does |
+|---|---|
+| `admission-create` | Registers a `ValidatingWebhookConfiguration` — tells the API server to call the controller before accepting any Ingress object (validation gate) |
+| `admission-patch` | Patches the webhook config with a TLS cert so the API server trusts the callback |
+
+Both run once and exit `Completed`. That's expected — not a failure.
+
+### Why the controller pod gets stuck Pending (kind-specific)
+
+The kind ingress-nginx manifest ships with a `nodeSelector` that requires the node to have the label `ingress-ready=true`. The scheduler won't place the pod until a matching node exists.
+
+Fix:
+```bash
+kubectl label node <node-name> ingress-ready=true
+```
+
+After labelling: `Pending` → `ContainerCreating` → `Running`.
+
+**AWS equivalent:** ECS placement constraint — a task stays `PENDING` until an instance matching the constraint (e.g. `attribute:ecs.instance-type == m5.large`) is available in the cluster.
+
+### Ingress Controller commands
+```bash
+kubectl get pods -n ingress-nginx                        # Check controller status
+kubectl describe pod -n ingress-nginx <controller-pod>  # Debug Pending/CrashLoop
+kubectl get ingressclass                                 # Verify nginx IngressClass registered
+kubectl get ingress                                      # List your Ingress rules
+kubectl describe ingress <name>                          # See which rules are active + events
+```
+
+---
+
 ## Key Behaviours to Remember
 
 - **Pods are ephemeral.** Never rely on a specific Pod being there. That's what Services are for.
