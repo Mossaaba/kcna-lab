@@ -212,6 +212,90 @@ kubectl describe configmap <name>
 
 ---
 
+## Namespaces and RBAC
+
+### Namespace
+Logical isolation within a cluster. Same manifest can run in multiple namespaces as separate instances.
+
+```yaml
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: dev
+```
+
+```bash
+kubectl get namespaces
+kubectl apply -f manifest.yaml -n dev      # Deploy into a specific namespace
+kubectl get pods -n dev                    # View resources in a namespace
+```
+
+Built-in namespaces — don't deploy into these:
+
+| Namespace | Purpose |
+|---|---|
+| `kube-system` | Control plane components (API server, scheduler, CoreDNS) |
+| `kube-public` | Readable by all users, including unauthenticated |
+| `kube-node-lease` | Node heartbeats — how the control plane knows nodes are alive |
+
+Every namespace gets a `default` ServiceAccount automatically. Pods use it if none is specified.
+
+### RBAC
+
+Three resources — same mental model as IAM:
+
+| K8s | AWS |
+|---|---|
+| ServiceAccount | IAM Role |
+| Role | IAM Policy (namespace-scoped) |
+| RoleBinding | Attaching a policy to a role |
+| ClusterRole | IAM Policy (cluster-wide) |
+
+```yaml
+# ServiceAccount — the identity
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: my-sa
+  namespace: dev
+
+---
+# Role — the permissions (namespace-scoped)
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: pod-reader
+  namespace: dev
+rules:
+- apiGroups: [""]        # "" = core API group (Pods, Services, ConfigMaps, etc.)
+  resources: ["pods"]
+  verbs: ["get", "list", "watch"]   # read-only
+
+---
+# RoleBinding — glues them together
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: pod-reader-binding
+  namespace: dev
+subjects:
+- kind: ServiceAccount
+  name: my-sa
+  namespace: dev
+roleRef:
+  kind: Role
+  name: pod-reader
+  apiGroup: rbac.authorization.k8s.io
+```
+
+### Verify permissions
+```bash
+kubectl auth can-i get pods -n dev --as=system:serviceaccount:dev:my-sa    # yes
+kubectl auth can-i delete pods -n dev --as=system:serviceaccount:dev:my-sa # no
+```
+
+---
+
 ## Ingress Controller (nginx-ingress)
 
 Routes external traffic into the cluster by hostname/path rules. AWS equivalent: ALB with listener rules.
@@ -262,3 +346,5 @@ kubectl describe ingress <name>                          # See which rules are a
 - **`containerPort` is documentation only.** It doesn't open a firewall rule. Traffic routing is the Service's job.
 - **Pin image versions.** `latest` is non-deterministic. Use `nginx:1.28.2` not `nginx:latest`.
 - **Labels are the glue.** Deployments find Pods via labels. Services find Pods via labels. Get them wrong and nothing connects.
+- **`ingressClassName` is a controller selector.** A cluster can run multiple Ingress Controllers. This field tells K8s which one owns your Ingress resource. Omit it and no controller claims it — rules are never enforced.
+- **Ingress ≠ Ingress Controller.** The Ingress resource is just routing rules. The controller is the process that reads and enforces them. Both must exist.
