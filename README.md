@@ -15,8 +15,8 @@ Hands-on Kubernetes reps on M4 Mac, mapped to AWS/ECS concepts I already own. Al
 | 1 | Local cluster setup | ✓ |
 | 2 | Core objects: Pods, Deployments, Services | ✓ |
 | 3 | Config and Secrets (ConfigMap, Secret) | ✓ |
-| 4 | Ingress | In progress |
-| 5 | Namespaces and RBAC | — |
+| 4 | Ingress | ✓ |
+| 5 | Namespaces and RBAC | ✓ |
 | 6 | Real app end-to-end | — |
 | 7 | Cloud Native App Delivery (GitOps, Helm, Argo CD) | — |
 | 8 | Cloud Native Architecture (CNCF, observability) | — |
