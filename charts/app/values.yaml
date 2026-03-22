@@ -1,0 +1,20 @@
+replicaCount: 2
+
+image:
+  repository: mendhak/http-https-echo
+  tag: "33"
+
+config:
+  appEnv: production
+  appPort: "8080"
+
+ingress:
+  host: app.local
+
+resources:
+  requests:
+    memory: "64Mi"
+    cpu: "200m"
+  limits:
+    memory: "128Mi"
+    cpu: "200m"

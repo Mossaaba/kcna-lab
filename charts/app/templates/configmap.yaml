@@ -1,0 +1,11 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: app-config
+  namespace: app
+data:
+  APP_ENV: {{ .Values.config.appEnv | quote }}
+  APP_PORT: {{ .Values.config.appPort | quote }}
+  app.properties: |
+    env={{ .Values.config.appEnv }}
+    port={{ .Values.config.appPort }}
