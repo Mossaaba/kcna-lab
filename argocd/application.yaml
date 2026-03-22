@@ -1,0 +1,20 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: app
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/danphillips-cloud/k8s.git
+    targetRevision: HEAD
+    path: charts/app
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: app
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
