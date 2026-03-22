@@ -1,5 +1,5 @@
 # Kubernetes Cheatsheet
-> Built hands-on during Phase 2 local learning. AWS equivalents included throughout.
+> Built hands-on through Phase 6. AWS equivalents included throughout.
 
 ---
 
@@ -339,6 +339,78 @@ kubectl describe ingress <name>                          # See which rules are a
 
 ---
 
+## Resource Limits
+
+Equivalent to ECS task CPU/memory settings. Two concepts:
+- **requests** — minimum guaranteed. Used by the scheduler to decide which node to place the Pod on.
+- **limits** — hard ceiling. Container is killed (OOMKilled) or throttled if it exceeds this.
+
+```yaml
+containers:
+  - name: app
+    resources:
+      requests:
+        memory: "64Mi"   # Scheduler needs this much free on the node
+        cpu: "200m"      # 200 millicores = 0.2 vCPU
+      limits:
+        memory: "128Mi"  # Pod is OOMKilled if it exceeds this
+        cpu: "200m"      # CPU is throttled (not killed) if it exceeds this
+```
+
+**CPU units:** `1000m` = 1 vCPU. `200m` = 20% of one core.
+
+**Rule of thumb:** set `requests` to what the app needs at idle, `limits` to what it needs at peak. Never set limits lower than requests.
+
+### Resource commands
+```bash
+kubectl describe node <name>          # See total allocatable CPU/memory and what's claimed
+kubectl top pods                      # Live CPU + memory usage (requires metrics-server)
+kubectl top nodes
+```
+
+---
+
+## Health Probes
+
+Tell K8s whether your container is alive and ready to receive traffic. AWS equivalent: ALB target health checks.
+
+Two probes:
+| Probe | Fails → | AWS equivalent |
+|---|---|---|
+| `livenessProbe` | Pod is killed and restarted | Nothing — ECS doesn't have this natively |
+| `readinessProbe` | Pod removed from Service endpoints (traffic stops) | ALB target health check |
+
+```yaml
+containers:
+  - name: app
+    livenessProbe:
+      httpGet:
+        path: /        # K8s hits this endpoint
+        port: 8080
+      initialDelaySeconds: 5    # Wait before first check (give the app time to start)
+      periodSeconds: 10         # Check every 10s
+    readinessProbe:
+      httpGet:
+        path: /
+        port: 8080
+      initialDelaySeconds: 5
+      periodSeconds: 10
+```
+
+**Why both?** Liveness restarts a stuck/deadlocked container. Readiness prevents traffic from hitting a container that's still starting up or temporarily overloaded. A Pod can be live but not ready.
+
+**Other probe types:**
+- `tcpSocket` — checks if the port accepts connections (good for non-HTTP services)
+- `exec` — runs a command inside the container; exit 0 = healthy
+
+### Probe debugging
+```bash
+kubectl describe pod <name>     # Events section shows probe failures
+kubectl get events              # Cluster-wide events — CrashLoopBackOff, probe failures, etc.
+```
+
+---
+
 ## Key Behaviours to Remember
 
 - **Pods are ephemeral.** Never rely on a specific Pod being there. That's what Services are for.
@@ -348,3 +420,6 @@ kubectl describe ingress <name>                          # See which rules are a
 - **Labels are the glue.** Deployments find Pods via labels. Services find Pods via labels. Get them wrong and nothing connects.
 - **`ingressClassName` is a controller selector.** A cluster can run multiple Ingress Controllers. This field tells K8s which one owns your Ingress resource. Omit it and no controller claims it — rules are never enforced.
 - **Ingress ≠ Ingress Controller.** The Ingress resource is just routing rules. The controller is the process that reads and enforces them. Both must exist.
+- **Requests ≠ limits.** Requests are what the scheduler uses to place the Pod. Limits are the hard ceiling. Set both — omitting either is a footgun.
+- **Liveness ≠ readiness.** Liveness failure → restart. Readiness failure → pulled from Service endpoints. A stuck app needs liveness. A slow-starting app needs readiness. Most apps need both.
+- **`initialDelaySeconds` matters.** Without it, probes fire before the app is up and trigger a restart loop. Set it to longer than your app's startup time.
