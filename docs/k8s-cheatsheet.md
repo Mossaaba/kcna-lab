@@ -411,6 +411,117 @@ kubectl get events              # Cluster-wide events — CrashLoopBackOff, prob
 
 ---
 
+## Helm
+
+Package manager for Kubernetes. Equivalent to CloudFormation templates + a parameters file — the chart is the template, `values.yaml` is the parameters.
+
+### Structure
+```
+charts/app/
+├── Chart.yaml          # Chart metadata (name, version)
+├── values.yaml         # Default values — override at deploy time
+└── templates/          # Manifests with {{ .Values.x }} substitution
+    ├── deployment.yaml
+    ├── service.yaml
+    └── ...
+```
+
+### values.yaml
+```yaml
+replicaCount: 2
+image:
+  repository: nginx
+  tag: "1.28.2"
+```
+
+### Template substitution
+```yaml
+# templates/deployment.yaml
+replicas: {{ .Values.replicaCount }}
+image: {{ .Values.image.repository }}:{{ .Values.image.tag }}
+```
+
+### Helm commands
+```bash
+helm lint charts/app                        # Validate chart structure and syntax
+helm template charts/app                    # Render templates locally — see the output YAML
+helm install my-release charts/app          # Install into the cluster
+helm upgrade my-release charts/app          # Apply changes
+helm uninstall my-release                   # Remove everything the chart installed
+helm list                                   # List installed releases
+```
+
+---
+
+## Argo CD (GitOps)
+
+Argo CD watches a Git repo and keeps cluster state in sync with it. AWS equivalent: CodePipeline watching a repo, but stricter — the repo is the source of truth and drift is auto-corrected.
+
+**GitOps loop:**
+1. You push a change to Git
+2. Argo CD detects the diff between Git state and cluster state
+3. Argo CD applies the change — no `kubectl` needed
+
+### Install
+```bash
+kubectl create namespace argocd
+kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
+kubectl get pods -n argocd     # Wait for all 6 deployments to be Running
+```
+
+### Log in to the UI
+```bash
+# Get the auto-generated admin password
+kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.password}" | base64 -d
+
+# Port-forward the UI (runs in foreground — keep terminal open)
+kubectl port-forward svc/argocd-server -n argocd 8080:443
+```
+Open `https://localhost:8080`, login as `admin`. Browser cert warning is expected — bypass it.
+
+### Application manifest
+The `Application` resource tells Argo CD what to watch and where to deploy it.
+
+```yaml
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: my-app
+  namespace: argocd           # Always deployed into the argocd namespace
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/you/your-repo
+    targetRevision: HEAD       # Branch or tag to watch
+    path: charts/app           # Path to the Helm chart (or plain manifests)
+  destination:
+    server: https://kubernetes.default.svc   # The local cluster
+    namespace: default
+  syncPolicy:
+    automated:
+      selfHeal: true           # Revert manual kubectl changes — drift correction
+      prune: true              # Delete resources removed from Git
+```
+
+### Key concepts
+| Concept | AWS equivalent |
+|---|---|
+| Helm chart | CloudFormation template |
+| `values.yaml` | CloudFormation parameters / Terraform `.tfvars` |
+| GitOps | CodePipeline watching a repo, but repo is sole source of truth |
+| Argo CD Application | Pipeline definition |
+| `selfHeal: true` | Drift detection + auto-remediation (like AWS Config rules that auto-remediate) |
+| `prune: true` | Resources deleted from Git are deleted from the cluster |
+
+### Argo CD commands
+```bash
+kubectl get applications -n argocd                  # List all Applications
+kubectl describe application <name> -n argocd       # Full sync status + events
+kubectl get pods -n argocd                          # Check Argo CD health
+```
+
+---
+
 ## Key Behaviours to Remember
 
 - **Pods are ephemeral.** Never rely on a specific Pod being there. That's what Services are for.

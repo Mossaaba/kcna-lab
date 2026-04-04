@@ -6,7 +6,7 @@ metadata:
 spec:
   project: default
   source:
-    repoURL: https://github.com/danphillips-cloud/k8s.git
+    repoURL: git@github.com:danphillips-cloud/k8s.git
     targetRevision: HEAD
     path: charts/app
   destination:
