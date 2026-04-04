@@ -1,5 +1,5 @@
 # Kubernetes Cheatsheet
-> Built hands-on through Phase 6. AWS equivalents included throughout.
+> Built hands-on through Phase 7. AWS equivalents included throughout.
 
 ---
 
