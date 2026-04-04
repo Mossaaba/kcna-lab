@@ -6,7 +6,7 @@ metadata:
 spec:
   project: default
   source:
-    repoURL: git@github.com:danphillips-cloud/kcna-lab.git
+    repoURL: git@github.com:your-username/kcna-lab.git    # replace with your repo SSH URL
     targetRevision: HEAD
     path: charts/app
   destination:
