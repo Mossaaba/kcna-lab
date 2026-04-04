@@ -1,8 +1,8 @@
-# Kubernetes Local Learning Lab
+# KCNA Lab
 
-A hands-on Kubernetes learning repo built for local development on an M-series Mac. Works through all four KCNA certification domains by building real things — not just reading docs.
+Hands-on Kubernetes learning built for local development on an M-series Mac. I worked through all four KCNA certification domains by building real things, not just reading docs.
 
-Every phase produces something that runs. Concepts are mapped to AWS/ECS equivalents throughout, which makes the mental model click faster if you have a cloud background.
+Every phase produces something that actually runs. I mapped every concept to its AWS/ECS equivalent as I went, which made things click a lot faster.
 
 ---
 
@@ -34,32 +34,29 @@ Every phase produces something that runs. Concepts are mapped to AWS/ECS equival
 
 ## Prerequisites
 
-### Install these tools
-
 ```bash
 # Homebrew (if not already installed)
 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
 
-# Colima — lightweight Docker runtime (no Docker Desktop needed)
+# Colima - lightweight Docker runtime, no Docker Desktop needed
 brew install colima
 
 # Docker CLI
 brew install docker
 
-# kind — Kubernetes in Docker
+# kind - Kubernetes in Docker
 brew install kind
 
-# kubectl — Kubernetes CLI
+# kubectl - Kubernetes CLI
 brew install kubectl
 
-# Helm — Kubernetes package manager (needed for Phase 7+)
+# Helm - Kubernetes package manager (needed for Phase 7+)
 brew install helm
 ```
 
-### Start the runtime
+Start Colima with enough headroom for the full stack. Phases 7 and 8 are resource-heavy.
 
 ```bash
-# Start Colima with enough resources for the full stack (Phases 7-8 are heavy)
 colima start --cpu 4 --memory 6
 ```
 
@@ -67,19 +64,16 @@ colima start --cpu 4 --memory 6
 
 ## Cluster Setup
 
-This repo includes a `kind-config.yaml` that configures the cluster with ingress support and port mapping pre-wired.
+The `kind-config.yaml` in this repo pre-wires ingress support and port mapping so you don't have to figure it out mid-phase.
 
 ```bash
-# Create the cluster
 kind create cluster --config kind-config.yaml
-
-# Verify it's up
 kubectl get nodes
 # Expected: k8s-learning-control-plane   Ready   control-plane
 ```
 
-**kind-config.yaml:**
 ```yaml
+# kind-config.yaml
 kind: Cluster
 apiVersion: kind.x-k8s.io/v1alpha4
 name: k8s-learning
@@ -97,27 +91,27 @@ nodes:
         protocol: TCP
 ```
 
-> Note: `ingress-ready=true` is required by the nginx-ingress manifest for kind. Without it the controller pod stays `Pending`.
+The `ingress-ready=true` label is required by the nginx-ingress manifest for kind. Without it the controller pod stays `Pending` and nothing routes.
 
 ---
 
 ## Repo Structure
 
 ```
-k8s/
-├── pods/               Phase 2 — standalone Pod manifests
-├── deployments/        Phases 2, 6 — Deployment manifests
-├── services/           Phases 2, 6 — Service manifests
-├── configs/            Phase 3 — ConfigMaps and Secrets
-├── ingress/            Phase 4 — Ingress rules
-├── namespaces/         Phase 5 — Namespaces, ServiceAccounts, Roles, RoleBindings
+kcna-lab/
+├── pods/               Phase 2 - standalone Pod manifests
+├── deployments/        Phases 2, 6 - Deployment manifests
+├── services/           Phases 2, 6 - Service manifests
+├── configs/            Phase 3 - ConfigMaps and Secrets
+├── ingress/            Phase 4 - Ingress rules
+├── namespaces/         Phase 5 - Namespaces, ServiceAccounts, Roles, RoleBindings
 ├── charts/
-│   └── app/            Phase 7 — Helm chart for the Phase 6 app
+│   └── app/            Phase 7 - Helm chart for the Phase 6 app
 │       ├── Chart.yaml
 │       ├── values.yaml
 │       └── templates/
 ├── argocd/
-│   └── application.yaml  Phase 7 — Argo CD Application manifest
+│   └── application.yaml  Phase 7 - Argo CD Application manifest
 └── docs/
     └── k8s-cheatsheet.md  Full reference: manifests, commands, AWS mappings, troubleshooting
 ```
@@ -126,9 +120,9 @@ k8s/
 
 ## Phase Walkthroughs
 
-### Phase 1 — Local Cluster
+### Phase 1 - Local Cluster
 
-Goal: get a cluster running and `kubectl` connected.
+Get a cluster running and `kubectl` connected.
 
 ```bash
 colima start --cpu 4 --memory 6
@@ -136,13 +130,13 @@ kind create cluster --config kind-config.yaml
 kubectl get nodes
 ```
 
-**AWS equivalent:** Creating a VPC and an ECS cluster — you're setting up the environment before deploying anything.
+AWS equivalent: setting up a VPC and ECS cluster before deploying anything. You're just standing up the environment.
 
 ---
 
-### Phase 2 — Core Objects
+### Phase 2 - Core Objects
 
-Deploy your first Pod, Deployment, and Service. Understand the label wiring that connects them.
+Deploy your first Pod, Deployment, and Service. The main thing to understand here is label wiring.
 
 ```bash
 kubectl apply -f pods/pod-hello.yaml
@@ -155,13 +149,13 @@ kubectl get services
 kubectl port-forward service/hello 8080:80
 ```
 
-**Key concept:** `selector.matchLabels` in a Deployment must match `template.metadata.labels`. Same pattern in a Service. Labels are the glue — get them wrong and nothing connects.
+`selector.matchLabels` in a Deployment must match `template.metadata.labels`. Same pattern in a Service. Labels are the glue. Get them wrong and nothing connects. This tripped me up early.
 
-**AWS equivalent:** Pod = ECS Task. Deployment = ECS Service (desired count, restarts). Service = ALB Target Group.
+AWS equivalent: Pod = ECS Task. Deployment = ECS Service (desired count, restarts). Service = ALB Target Group.
 
 ---
 
-### Phase 3 — Config and Secrets
+### Phase 3 - Config and Secrets
 
 Inject config into Pods without baking it into the image. Two methods: env vars and volume mounts.
 
@@ -176,13 +170,13 @@ kubectl exec -it <pod-name> -- env | grep APP
 kubectl exec -it <pod-name> -- ls /etc/config
 ```
 
-**AWS equivalent:** ConfigMap = Parameter Store. Secret = Secrets Manager (plaintext locally — not encrypted at rest in kind).
+AWS equivalent: ConfigMap = Parameter Store. Secret = Secrets Manager. Note that Secrets aren't encrypted at rest in kind by default, so treat them as plaintext for local work.
 
 ---
 
-### Phase 4 — Ingress
+### Phase 4 - Ingress
 
-Route external HTTP traffic into the cluster by hostname. Requires installing the nginx-ingress controller first.
+Route external HTTP traffic into the cluster by hostname. You need to install the nginx-ingress controller first.
 
 ```bash
 # Install the ingress controller for kind
@@ -198,15 +192,15 @@ kubectl apply -f ingress/ingress-hello.yaml
 curl -H "Host: hello.local" http://localhost:8080
 ```
 
-**AWS equivalent:** Ingress = ALB with listener rules. Ingress Controller = the ALB itself. Ingress resource = the listener rule set.
+AWS equivalent: Ingress Controller = the ALB itself. Ingress resource = the listener rules. Both have to exist. An Ingress resource with no controller is just YAML that nothing reads.
 
-> Troubleshooting: if the controller pod is `Pending`, check `kubectl describe pod -n ingress-nginx <pod>` — it likely needs the `ingress-ready=true` node label. The kind-config.yaml in this repo handles this automatically.
+If the controller pod is `Pending`, check `kubectl describe pod -n ingress-nginx <pod>`. It probably needs the `ingress-ready=true` node label. The `kind-config.yaml` in this repo handles that automatically.
 
 ---
 
-### Phase 5 — Namespaces and RBAC
+### Phase 5 - Namespaces and RBAC
 
-Isolate workloads and apply least-privilege permissions. Same instincts as IAM.
+Isolate workloads and apply least-privilege permissions. If you've done IAM, this mental model transfers directly.
 
 ```bash
 kubectl apply -f namespaces/
@@ -216,13 +210,13 @@ kubectl auth can-i get pods -n hello --as=system:serviceaccount:hello:hello-sa  
 kubectl auth can-i delete pods -n hello --as=system:serviceaccount:hello:hello-sa # no
 ```
 
-**AWS equivalent:** Namespace = ECS cluster isolation or AWS account boundary. ServiceAccount = IAM Role. Role = IAM Policy (namespace-scoped). RoleBinding = attaching a policy to a role.
+AWS equivalent: Namespace = ECS cluster isolation or account boundary. ServiceAccount = IAM Role. Role = IAM Policy (namespace-scoped). RoleBinding = attaching a policy to a role.
 
 ---
 
-### Phase 6 — Real App End-to-End
+### Phase 6 - Real App End-to-End
 
-Everything together: Deployment with resource limits and health probes, Service, ConfigMap, Secret, Ingress, Namespace, RBAC.
+Everything together. Deployment with resource limits and health probes, Service, ConfigMap, Secret, Ingress, Namespace, RBAC.
 
 ```bash
 kubectl apply -f namespaces/namespace-app.yaml
@@ -230,7 +224,7 @@ kubectl apply -f namespaces/serviceaccount-app.yaml
 kubectl apply -f configs/configmap-app.yaml
 kubectl apply -f configs/secrets-app.yaml
 kubectl apply -f deployments/deployment-app.yaml
-kubectl apply -f services/  # if not already applied
+kubectl apply -f services/
 kubectl apply -f ingress/ingress-app.yaml
 
 kubectl get all -n app
@@ -238,16 +232,16 @@ kubectl get all -n app
 
 ---
 
-### Phase 7 — Helm + Argo CD (GitOps)
+### Phase 7 - Helm + Argo CD (GitOps)
 
-Package the Phase 6 app as a Helm chart. Deploy and auto-sync it via Argo CD from GitHub.
+Package the Phase 6 app as a Helm chart and deploy it via Argo CD. The payoff is watching Argo CD reconcile a change you pushed to GitHub without touching `kubectl`.
 
 #### Install Argo CD
 
 ```bash
 kubectl create namespace argocd
 kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
-kubectl get pods -n argocd -w    # wait for all pods Running
+kubectl get pods -n argocd -w
 ```
 
 #### Log in to the UI
@@ -256,24 +250,25 @@ kubectl get pods -n argocd -w    # wait for all pods Running
 # Get the admin password
 kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.password}" | base64 -d
 
-# Port-forward
+# Port-forward (keep this terminal open)
 kubectl port-forward svc/argocd-server -n argocd 8080:443
 ```
 
-Open `https://localhost:8080`, login as `admin`. Bypass the browser cert warning — expected for local installs.
+Open `https://localhost:8080`, login as `admin`. The browser cert warning is expected for local installs.
 
-#### Connect your GitHub repo (SSH deploy key)
+#### Connect your GitHub repo via SSH
+
+Generate a dedicated deploy key. Do not skip the `-f` flag. If you omit it, `ssh-keygen` overwrites your personal `~/.ssh/id_ed25519` key, which breaks `git push`. I learned this one the hard way.
 
 ```bash
-# Generate a keypair scoped to this repo
 ssh-keygen -t ed25519 -C "argocd-deploy-key" -f ~/.ssh/argocd_deploy
 
 # Add the PUBLIC key to GitHub
 cat ~/.ssh/argocd_deploy.pub
-# → GitHub repo → Settings → Deploy keys → Add deploy key → read-only
+# GitHub repo -> Settings -> Deploy keys -> Add deploy key -> read-only
 ```
 
-In Argo CD UI: **Settings → Repositories → Connect Repo → Via SSH**
+In Argo CD UI: **Settings -> Repositories -> Connect Repo -> Via SSH**
 - URL: `git@github.com:you/kcna-lab.git`
 - SSH private key: paste `cat ~/.ssh/argocd_deploy`
 
@@ -285,21 +280,13 @@ Update `argocd/application.yaml` with your repo URL, then:
 kubectl apply -f argocd/application.yaml
 ```
 
-Argo CD will sync automatically. To prove the GitOps loop: change `replicaCount` in `charts/app/values.yaml`, push to GitHub, watch Argo CD reconcile without running `kubectl`.
-
-#### Helm commands (for reference)
-
-```bash
-helm lint charts/app              # Validate
-helm template charts/app          # Render locally
-helm install app charts/app       # Manual install (bypasses Argo CD)
-```
+To prove the GitOps loop: change `replicaCount` in `charts/app/values.yaml`, push to GitHub, watch Argo CD reconcile without running `kubectl`.
 
 ---
 
-### Phase 8 — Prometheus + Grafana (Observability)
+### Phase 8 - Prometheus + Grafana (Observability)
 
-Install the kube-prometheus-stack — bundles Prometheus, Grafana, Alertmanager, and node exporters with pre-built dashboards.
+The kube-prometheus-stack bundles Prometheus, Grafana, Alertmanager, and node exporters with pre-built dashboards. One install command and you have full cluster observability.
 
 ```bash
 helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
@@ -307,8 +294,14 @@ helm repo update
 helm install kube-prometheus-stack prometheus-community/kube-prometheus-stack \
   -n monitoring --create-namespace
 
-# Check pods are up (takes ~2 minutes)
 kubectl get pods -n monitoring -w
+```
+
+This stack is resource-heavy. If pods crash-loop, increase Colima resources:
+
+```bash
+colima stop
+colima start --cpu 4 --memory 6
 ```
 
 #### Access Grafana
@@ -326,15 +319,7 @@ kubectl --namespace monitoring port-forward $POD_NAME 3000
 
 Open `http://localhost:3000`, login as `admin`.
 
-Navigate to **Kubernetes / Compute Resources / Cluster** for cluster-wide metrics, or **Kubernetes / Compute Resources / Namespace (Pods)** to see per-pod CPU and memory.
-
-> Resource note: the kube-prometheus-stack is heavy. If pods crash-loop, you likely need more Colima resources: `colima stop && colima start --cpu 4 --memory 6`.
-
----
-
-## Reference
-
-`docs/k8s-cheatsheet.md` — complete reference covering every object type, commands, AWS mappings, and a troubleshooting guide for the most common failure states.
+Start with **Kubernetes / Compute Resources / Cluster** for a cluster overview. Then drill into **Kubernetes / Compute Resources / Namespace (Pods)** to see per-pod CPU and memory. All of this works out of the box with no custom configuration.
 
 ---
 
@@ -357,7 +342,13 @@ Navigate to **Kubernetes / Compute Resources / Cluster** for cluster-wide metric
 
 ---
 
-## Useful Commands
+## Reference
+
+`docs/k8s-cheatsheet.md` covers every object type with manifests, commands, AWS mappings, and a troubleshooting section for the failures you're most likely to hit.
+
+---
+
+## Quick Reference
 
 ```bash
 # Cluster
