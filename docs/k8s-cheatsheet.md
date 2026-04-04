@@ -1,5 +1,5 @@
 # Kubernetes Cheatsheet
-> Built hands-on through Phase 7. AWS equivalents included throughout.
+> Built hands-on through Phase 8. AWS equivalents included throughout.
 
 ---
 
@@ -76,6 +76,17 @@ spec:
 ```
 
 **Label wiring:** `selector.matchLabels` → `template.metadata.labels` must match. This is how the Deployment knows which Pods it owns.
+
+### Rolling updates
+
+When you change the image tag and apply, K8s replaces Pods one at a time — no downtime.
+
+```bash
+kubectl set image deployment/<name> <container>=nginx:1.29.0   # Trigger a rollout
+kubectl rollout status deployment/<name>                        # Watch progress
+kubectl rollout history deployment/<name>                       # See previous versions
+kubectl rollout undo deployment/<name>                          # Roll back one version
+```
 
 ### Deployment commands
 ```bash
@@ -209,6 +220,37 @@ kubectl apply -f configmap.yaml
 kubectl get configmaps
 kubectl describe configmap <name>
 ```
+
+---
+
+## Secret
+
+Same as ConfigMap but base64-encoded at rest. Equivalent to Secrets Manager. Not encrypted by default in kind — treat as plaintext for local learning.
+
+```yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: hello-secret
+type: Opaque
+data:
+  DB_PASSWORD: cGFzc3dvcmQ=    # base64-encoded — echo -n 'password' | base64
+```
+
+Encode/decode:
+```bash
+echo -n 'myvalue' | base64        # encode
+echo 'bXl2YWx1ZQ==' | base64 -d  # decode
+```
+
+Consume identically to ConfigMap — use `secretRef` instead of `configMapRef`:
+```yaml
+envFrom:
+  - secretRef:
+      name: hello-secret
+```
+
+**Key difference from ConfigMap:** K8s will refuse to show Secret values in plain text via `kubectl get` — use `kubectl get secret <name> -o jsonpath="{.data.KEY}" | base64 -d` to read a value.
 
 ---
 
@@ -513,12 +555,212 @@ spec:
 | `selfHeal: true` | Drift detection + auto-remediation (like AWS Config rules that auto-remediate) |
 | `prune: true` | Resources deleted from Git are deleted from the cluster |
 
+### GitHub SSH deploy key setup
+
+Argo CD needs read access to your repo. Use a deploy key — scoped to one repo, read-only.
+
+```bash
+# 1. Generate a keypair (don't use your personal SSH key)
+ssh-keygen -t ed25519 -C "argocd-deploy-key"
+
+# 2. Add the PUBLIC key to GitHub
+cat ~/.ssh/id_ed25519.pub
+# GitHub repo → Settings → Deploy keys → Add deploy key → paste → read-only
+```
+
+In Argo CD UI: **Settings → Repositories → Connect Repo → Via SSH**
+- Repository URL: `git@github.com:you/repo.git` (SSH format, not HTTPS)
+- SSH private key: paste output of `cat ~/.ssh/id_ed25519`
+
 ### Argo CD commands
 ```bash
 kubectl get applications -n argocd                  # List all Applications
 kubectl describe application <name> -n argocd       # Full sync status + events
 kubectl get pods -n argocd                          # Check Argo CD health
 ```
+
+---
+
+## Prometheus + Grafana (Observability)
+
+AWS equivalent: CloudWatch metrics + CloudWatch dashboards — except open source and running inside your cluster.
+
+**Split of responsibilities:**
+- **Prometheus** — scrapes and stores metrics (pull-based)
+- **Grafana** — visualizes metrics from Prometheus
+
+**Pull model:** Prometheus polls `/metrics` endpoints on a schedule. Your app exposes the endpoint; Prometheus finds it via labels and scrapes it. Nothing is pushed.
+
+### Install (kube-prometheus-stack)
+Bundles Prometheus, Grafana, Alertmanager, node exporters, and pre-built dashboards.
+
+```bash
+helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
+helm repo update
+helm install kube-prometheus-stack prometheus-community/kube-prometheus-stack -n monitoring --create-namespace
+```
+
+### Access Grafana
+```bash
+# Get password
+kubectl --namespace monitoring get secrets kube-prometheus-stack-grafana \
+  -o jsonpath="{.data.admin-password}" | base64 -d ; echo
+
+# Port-forward
+export POD_NAME=$(kubectl --namespace monitoring get pod \
+  -l "app.kubernetes.io/name=grafana,app.kubernetes.io/instance=kube-prometheus-stack" -oname)
+kubectl --namespace monitoring port-forward $POD_NAME 3000
+```
+Open `http://localhost:3000`, login as `admin`.
+
+### Key concepts
+| Concept | AWS equivalent |
+|---|---|
+| Prometheus | CloudWatch metrics |
+| Grafana | CloudWatch dashboards |
+| Node exporter | CloudWatch agent on EC2 |
+| ServiceMonitor | Tells Prometheus which Services to scrape |
+| `/metrics` endpoint | Custom CloudWatch metrics endpoint |
+
+### Adding custom metrics
+To scrape your own app, it needs to expose a `/metrics` endpoint, plus a `ServiceMonitor` resource:
+```yaml
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: my-app
+  namespace: monitoring
+spec:
+  selector:
+    matchLabels:
+      app: my-app       # Finds Services with this label
+  endpoints:
+    - port: http
+      path: /metrics
+```
+
+### Commands
+```bash
+kubectl get pods -n monitoring                    # Check stack health
+kubectl get servicemonitors -n monitoring         # List scrape targets
+```
+
+---
+
+## Cluster Setup (kind + Colima)
+
+Local stack: **Colima** (lightweight VM) → **Docker** → **kind** (K8s in Docker).
+
+```bash
+# Start Colima with enough resources for a full stack
+colima start --cpu 4 --memory 6
+
+# Create the cluster (with ingress support)
+kind create cluster --name k8s-learning --config kind-config.yaml
+
+# Check it's up
+kubectl get nodes
+```
+
+**kind-config.yaml** (saves the ingress-ready label and port mapping):
+```yaml
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+name: k8s-learning
+nodes:
+  - role: control-plane
+    kubeadmConfigPatches:
+      - |
+        kind: InitConfiguration
+        nodeRegistration:
+          kubeletExtraArgs:
+            node-labels: "ingress-ready=true"
+    extraPortMappings:
+      - containerPort: 80
+        hostPort: 8080
+        protocol: TCP
+```
+
+### Cluster commands
+```bash
+kind get clusters                          # List clusters
+kind delete cluster --name k8s-learning   # Delete cluster
+colima stop                                # Stop the VM
+colima start --cpu 4 --memory 6           # Restart with more resources
+kubectl config get-contexts               # See available clusters
+kubectl config use-context <name>         # Switch cluster
+```
+
+---
+
+## Troubleshooting
+
+### Pod stuck in Pending
+Scheduler can't place the Pod. Common causes:
+
+| Cause | How to confirm | Fix |
+|---|---|---|
+| Not enough CPU/memory | `kubectl describe node` → Allocated resources | Scale down other pods or increase Colima resources |
+| Missing node label | `kubectl describe pod` → Events: "didn't match node selector" | `kubectl label node <name> ingress-ready=true` |
+| No nodes available | `kubectl get nodes` shows NotReady | Restart Colima/kind |
+
+```bash
+kubectl describe pod <name>     # Events section tells you exactly why it's Pending
+```
+
+### Pod in CrashLoopBackOff
+Container starts and immediately exits. K8s keeps restarting it with exponential backoff.
+
+```bash
+kubectl logs <pod>              # Check what the app printed before dying
+kubectl logs <pod> --previous  # Logs from the previous (crashed) container
+kubectl describe pod <pod>     # Exit code in Last State — 137 = OOMKilled, 1 = app error
+```
+
+Common causes: bad config/env vars, app crash on startup, liveness probe firing too early (`initialDelaySeconds` too low).
+
+### Pod in ImagePullBackOff
+K8s can't pull the container image.
+
+```bash
+kubectl describe pod <name>    # Events: "Failed to pull image"
+```
+
+Common causes: typo in image name, wrong tag, private registry not authenticated, no internet from inside kind.
+
+### Port-forward fails: "pod is not running"
+The pod isn't ready yet. Wait for `READY` to show `n/n`:
+```bash
+kubectl get pods -n <namespace> -w    # Watch until fully ready, then Ctrl+C and retry
+```
+
+### Helm install fails after laptop sleep
+TLS handshake timeout — the cluster connection dropped. Clean up and retry:
+```bash
+helm list -n <namespace>                    # Check if release exists in a broken state
+helm uninstall <release> -n <namespace>     # Clean up if it does
+helm install ...                            # Retry
+```
+
+### Argo CD: "ssh: no key found"
+You connected the repo with an HTTPS URL but Argo CD tried SSH. The repo URL must match the auth method:
+- SSH auth → `git@github.com:you/repo.git`
+- HTTPS auth → `https://github.com/you/repo.git`
+
+### Argo CD: app shows OutOfSync but won't sync
+Check the app events:
+```bash
+kubectl describe application <name> -n argocd
+```
+Common cause: `prune: false` and a resource was removed from Git — Argo CD won't delete it without prune enabled.
+
+### Nodes show NotReady after Colima restart
+Colima restarted but the kind cluster lost connectivity. Check:
+```bash
+colima status
+kubectl get nodes
+```
+If nodes are NotReady, restart Colima: `colima stop && colima start --cpu 4 --memory 6`.
 
 ---
 
