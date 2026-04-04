@@ -274,7 +274,7 @@ cat ~/.ssh/argocd_deploy.pub
 ```
 
 In Argo CD UI: **Settings → Repositories → Connect Repo → Via SSH**
-- URL: `git@github.com:you/k8s.git`
+- URL: `git@github.com:you/kcna-lab.git`
 - SSH private key: paste `cat ~/.ssh/argocd_deploy`
 
 #### Apply the Application manifest
