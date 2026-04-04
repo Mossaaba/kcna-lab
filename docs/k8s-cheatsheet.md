@@ -559,18 +559,22 @@ spec:
 
 Argo CD needs read access to your repo. Use a deploy key — scoped to one repo, read-only.
 
+> **Warning:** Always use `-f` to specify a separate filename. Omitting it overwrites `~/.ssh/id_ed25519` — your personal GitHub key — which breaks git push from the command line.
+
 ```bash
-# 1. Generate a keypair (don't use your personal SSH key)
-ssh-keygen -t ed25519 -C "argocd-deploy-key"
+# 1. Generate a SEPARATE keypair — do not use your personal key
+ssh-keygen -t ed25519 -C "argocd-deploy-key" -f ~/.ssh/argocd_deploy
 
 # 2. Add the PUBLIC key to GitHub
-cat ~/.ssh/id_ed25519.pub
+cat ~/.ssh/argocd_deploy.pub
 # GitHub repo → Settings → Deploy keys → Add deploy key → paste → read-only
 ```
 
 In Argo CD UI: **Settings → Repositories → Connect Repo → Via SSH**
 - Repository URL: `git@github.com:you/repo.git` (SSH format, not HTTPS)
-- SSH private key: paste output of `cat ~/.ssh/id_ed25519`
+- SSH private key: paste output of `cat ~/.ssh/argocd_deploy`
+
+Your personal `~/.ssh/id_ed25519` remains untouched and continues to authenticate your git pushes.
 
 ### Argo CD commands
 ```bash
@@ -741,6 +745,17 @@ helm list -n <namespace>                    # Check if release exists in a broke
 helm uninstall <release> -n <namespace>     # Clean up if it does
 helm install ...                            # Retry
 ```
+
+### git push fails: "key is marked as read only"
+The SSH agent is using the Argo CD deploy key instead of your personal GitHub key. Deploy keys are read-only and can't push.
+
+```bash
+ssh-add -l                        # Check which key is loaded
+ssh -T git@github.com             # Should say "Hi username!" not "Hi org/repo!"
+ssh-add ~/.ssh/id_ed25519         # Add your personal key
+```
+
+Root cause: the Argo CD deploy key was generated without `-f`, overwriting `~/.ssh/id_ed25519`. Regenerate it with a dedicated filename: `ssh-keygen -t ed25519 -f ~/.ssh/argocd_deploy`.
 
 ### Argo CD: "ssh: no key found"
 You connected the repo with an HTTPS URL but Argo CD tried SSH. The repo URL must match the auth method:
