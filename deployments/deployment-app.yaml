@@ -2,6 +2,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: app
+  namespace: app
 spec:
   replicas: 2
   selector:
@@ -15,8 +16,6 @@ spec:
       containers:
       - name: app
         image: mendhak/http-https-echo:33
-        args:
-        - "-text=Hello, World!"
         ports:
         - containerPort: 8080
         envFrom:
