@@ -1,0 +1,22 @@
+{{- if .Values.cronjob.enabled }}
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: {{ .Release.Name }}-hello-cronjob
+  labels:
+    app: {{ .Release.Name }}
+spec:
+  schedule: "{{ .Values.cronjob.schedule }}"
+  concurrencyPolicy: Replace
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 1
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          restartPolicy: OnFailure
+          containers:
+            - name: hello
+              image: {{ .Values.cronjob.image.repository }}:{{ .Values.cronjob.image.tag }}
+              command: ["sh", "-c", "echo Hello World"]
+{{- end }}

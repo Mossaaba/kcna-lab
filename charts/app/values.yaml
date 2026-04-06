@@ -18,3 +18,10 @@ resources:
   limits:
     memory: "128Mi"
     cpu: "200m"
+
+cronjob:
+  enabled: true
+  schedule: "*/5 * * * *"
+  image:
+    repository: busybox
+    tag: "1.36"
